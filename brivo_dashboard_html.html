@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Office Occupancy Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.1.9/Recharts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f9f9f7; color: #1a1a18; padding: 2rem; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { font-size: 14px; color: #6b6b68; margin-bottom: 1.25rem; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  .controls label { font-size: 13px; color: #6b6b68; }
+  input[type=date], button, .file-btn { padding: 6px 10px; border-radius: 8px; border: 0.5px solid #ddd; background: #fff; color: #1a1a18; font-size: 13px; cursor: pointer; font-family: inherit; }
+  button:hover, .file-btn:hover { background: #f0f0ee; }
+  .file-upload { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border: 0.5px solid #ddd; border-radius: 10px; margin-bottom: 1.25rem; }
+  .file-upload span { font-size: 13px; color: #6b6b68; }
+  .file-btn { background: #6366f1; color: #fff; border: none; font-weight: 500; }
+  .file-btn:hover { background: #4f46e5; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+  .card { background: #fff; border: 0.5px solid #e5e5e2; border-radius: 12px; padding: 14px 16px; }
+  .card-val { font-size: 22px; font-weight: 600; margin-bottom: 2px; }
+  .card-lbl { font-size: 12px; color: #6b6b68; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .tab { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; background: #f0f0ee; color: #6b6b68; font-family: inherit; }
+  .tab.active { background: #1a1a18; color: #fff; }
+  .chart-box { background: #fff; border: 0.5px solid #e5e5e2; border-radius: 12px; padding: 1.25rem; }
+  .chart-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .chart-sub { font-size: 13px; color: #6b6b68; margin-bottom: 1.25rem; }
+  .rank-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 1rem; }
+  .rank-item { background: #f9f9f7; border-radius: 8px; padding: 8px 6px; text-align: center; }
+  .rank-num { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+  .rank-day { font-size: 13px; font-weight: 600; }
+  .rank-avg { font-size: 12px; color: #6b6b68; }
+  .legend { display: flex; gap: 16px; margin-top: 0.75rem; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b6b68; }
+  .legend-line { width: 16px; height: 3px; border-radius: 2px; }
+  canvas { width: 100% !important; }
+  #bar-canvas, #line-canvas { width: 100%; height: 260px; }
+  .empty { padding: 3rem; text-align: center; color: #6b6b68; font-size: 14px; }
+  @media (max-width: 600px) { .cards { grid-template-columns: repeat(2, 1fr); } .rank-grid { grid-template-columns: repeat(4, 1fr); } }
+</style>
+</head>
+<body>
+
+<h1>Office Occupancy Dashboard</h1>
+<p class="sub" id="sub">Upload a Brivo CSV to get started</p>
+
+<div class="file-upload">
+  <button class="file-btn" onclick="document.getElementById('csvInput').click()">Upload CSV</button>
+  <span id="fileName">No file selected</span>
+  <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="loadCSV(event)">
+</div>
+
+<div class="controls">
+  <label>From <input type="date" id="startDate" onchange="render()"></label>
+  <label>To <input type="date" id="endDate" onchange="render()"></label>
+  <button onclick="setPreset(30)">Last 30d</button>
+  <button onclick="setPreset(90)">Last 90d</button>
+  <button onclick="setAllTime()">All time</button>
+  <label><input type="checkbox" id="weekends" onchange="render()"> Include weekends</label>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="card-val" id="cAvg">—</div><div class="card-lbl">Avg daily visitors</div></div>
+  <div class="card"><div class="card-val" id="cPeak">—</div><div class="card-lbl">Peak single day</div></div>
+  <div class="card"><div class="card-val" id="cUnique">—</div><div class="card-lbl">Unique badge holders</div></div>
+  <div class="card"><div class="card-val" id="cBusiest">—</div><div class="card-lbl">Busiest day (avg)</div></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" id="tabDow" onclick="switchTab('dow')">Day of Week</button>
+  <button class="tab" id="tabTrend" onclick="switchTab('trend')">Daily Trend</button>
+</div>
+
+<div class="chart-box" id="panelDow">
+  <div class="chart-title">Average Unique Visitors by Day of Week</div>
+  <div class="chart-sub">Avg unique badge holders per occurrence of each weekday</div>
+  <canvas id="barChart"></canvas>
+  <div class="rank-grid" id="rankGrid"></div>
+</div>
+
+<div class="chart-box" id="panelTrend" style="display:none">
+  <div class="chart-title">Daily Unique Visitors Over Time</div>
+  <div class="chart-sub">Unique badge holders per day with 14-day rolling average</div>
+  <canvas id="lineChart"></canvas>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-line" style="background:#c4b5fd"></div>Daily visitors</div>
+    <div class="legend-item"><div class="legend-line" style="background:#6366f1"></div>14-day rolling avg</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
+const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DOW_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+let parsed = [];
+let barChart, lineChart;
+let activeTab = "dow";
+
+function loadCSV(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById("fileName").textContent = file.name;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      parsed = results.data
+        .filter(r => r.Event && (r.Event.toLowerCase().includes("user entry") || r.Event.toLowerCase().includes("access granted")) && r.Occurred)
+        .map(r => {
+          const d = new Date(r.Occurred.replace(/ PDT| PST/g, ""));
+          return {
+            date: isNaN(d) ? null : d,
+            dow: isNaN(d) ? null : d.getDay(),
+            dateStr: isNaN(d) ? null : d.toISOString().slice(0,10),
+            person: ((r["First Name"]||"") + " " + (r["Last Name"]||"")).trim()
+          };
+        })
+        .filter(r => r.date !== null);
+
+      const dates = parsed.map(r => r.dateStr).sort();
+      document.getElementById("startDate").value = dates[0];
+      document.getElementById("endDate").value = dates[dates.length-1];
+      render();
+    }
+  });
+}
+
+function setPreset(days) {
+  const e = new Date(); const s = new Date();
+  s.setDate(s.getDate() - days);
+  document.getElementById("startDate").value = s.toISOString().slice(0,10);
+  document.getElementById("endDate").value = e.toISOString().slice(0,10);
+  render();
+}
+
+function setAllTime() {
+  const dates = parsed.map(r => r.dateStr).sort();
+  if (!dates.length) return;
+  document.getElementById("startDate").value = dates[0];
+  document.getElementById("endDate").value = dates[dates.length-1];
+  render();
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById("panelDow").style.display = tab === "dow" ? "" : "none";
+  document.getElementById("panelTrend").style.display = tab === "trend" ? "" : "none";
+  document.getElementById("tabDow").className = "tab" + (tab === "dow" ? " active" : "");
+  document.getElementById("tabTrend").className = "tab" + (tab === "trend" ? " active" : "");
+}
+
+function render() {
+  if (!parsed.length) return;
+  const start = document.getElementById("startDate").value;
+  const end = document.getElementById("endDate").value;
+  const incWeekends = document.getElementById("weekends").checked;
+
+  const filtered = parsed.filter(r => {
+    if (r.dateStr < start || r.dateStr > end) return false;
+    if (!incWeekends && (r.dow === 0 || r.dow === 6)) return false;
+    return true;
+  });
+
+  // Daily unique visitors
+  const byDate = {};
+  filtered.forEach(r => {
+    if (!byDate[r.dateStr]) byDate[r.dateStr] = new Set();
+    byDate[r.dateStr].add(r.person);
+  });
+  const dailyData = Object.entries(byDate).sort(([a],[b]) => a.localeCompare(b))
+    .map(([date, people]) => ({ date, count: people.size, label: new Date(date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"}) }));
+
+  // Stats
+  const counts = dailyData.map(d => d.count);
+  const avg = counts.length ? Math.round(counts.reduce((a,c)=>a+c,0)/counts.length) : 0;
+  const peak = counts.length ? Math.max(...counts) : 0;
+  const unique = new Set(filtered.map(r => r.person)).size;
+
+  // DOW
+  const dowBuckets = Array(7).fill(null).map((_,i) => ({ day: DOW[i], full: DOW_FULL[i], days: {} }));
+  filtered.forEach(r => {
+    if (!dowBuckets[r.dow].days[r.dateStr]) dowBuckets[r.dow].days[r.dateStr] = new Set();
+    dowBuckets[r.dow].days[r.dateStr].add(r.person);
+  });
+  const dowData = dowBuckets.map(b => {
+    const vals = Object.values(b.days).map(s => s.size);
+    return { day: b.day, full: b.full, avg: vals.length ? Math.round(vals.reduce((a,c)=>a+c,0)/vals.length) : 0, max: vals.length ? Math.max(...vals) : 0 };
+  });
+  const maxAvg = Math.max(...dowData.map(d => d.avg));
+  const busiest = [...dowData].sort((a,b) => b.avg-a.avg)[0];
+
+  // Update cards
+  document.getElementById("cAvg").textContent = avg;
+  document.getElementById("cPeak").textContent = peak;
+  document.getElementById("cUnique").textContent = unique;
+  document.getElementById("cBusiest").textContent = busiest?.full || "—";
+  document.getElementById("sub").textContent = `${filtered.length.toLocaleString()} entries · ${dailyData.length} days in range`;
+
+  // Rank grid
+  const ranked = [...dowData].sort((a,b) => b.avg-a.avg);
+  document.getElementById("rankGrid").innerHTML = ranked.map((d,i) => `
+    <div class="rank-item">
+      <div class="rank-num">#${i+1}</div>
+      <div class="rank-day">${d.day}</div>
+      <div class="rank-avg">${d.avg} avg</div>
+    </div>`).join("");
+
+  // Bar chart
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById("barChart"), {
+    type: "bar",
+    data: {
+      labels: dowData.map(d => d.day),
+      datasets: [{
+        data: dowData.map(d => d.avg),
+        backgroundColor: dowData.map(d => d.avg === maxAvg ? "#6366f1" : "#c4b5fd"),
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        title: (i) => dowData[i[0].dataIndex].full,
+        label: (i) => `${i.raw} avg (peak: ${dowData[i.dataIndex].max})`
+      }}},
+      scales: {
+        x: { grid: { display: false }, border: { display: false } },
+        y: { grid: { color: "#f0f0ee" }, border: { display: false } }
+      }
+    }
+  });
+
+  // Rolling avg
+  const withAvg = dailyData.map((d,i) => {
+    const w = dailyData.slice(Math.max(0,i-13), i+1);
+    return { ...d, avg: Math.round(w.reduce((a,c)=>a+c.count,0)/w.length) };
+  });
+
+  // Line chart
+  if (lineChart) lineChart.destroy();
+  const interval = Math.max(1, Math.floor(withAvg.length / 8));
+  lineChart = new Chart(document.getElementById("lineChart"), {
+    type: "line",
+    data: {
+      labels: withAvg.map(d => d.label),
+      datasets: [
+        { label: "Daily visitors", data: withAvg.map(d => d.count), borderColor: "#c4b5fd", borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+        { label: "14-day avg", data: withAvg.map(d => d.avg), borderColor: "#6366f1", borderWidth: 2.5, pointRadius: 0, tension: 0.3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 8 } },
+        y: { grid: { color: "#f0f0ee" }, border: { display: false } }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
