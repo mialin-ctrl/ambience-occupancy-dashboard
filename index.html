@@ -124,6 +124,30 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
 <script>
+const ALLOWLIST = new Set([
+  "Aditya Prabhakar","Ahmad Darki","Ajinkya Bari","Akash Desai","Alekhya Yarramasu",
+  "Allie Ivener","Allison Chuang","Ani Venkatesh","Annie He","Anshul Kulshrestha",
+  "Arnelle Chang","Athish Rahul Rao","Billy Chan","Brendan Fortuner","Catherine Shi",
+  "Chi Le","Chinmay Vinchurkar","Chris Naranjo","Cullen McMahon","Dai Hara",
+  "Daisy Chu","Dave Makhervaks","Dave Giacomo","David Giacomo","Dhruven Shah",
+  "Dhruven Nimesh Shah","Elisabeth Berger","Emma Chiu","Eric Hunter","Erin McCoy",
+  "Eshwar Inapuri","Fellenia Chan","Helen Xue","Jade Stannard","Jamie Cai",
+  "Jared Hu","Jason Scott","Javier Sorribes Camargo","Javi Sorribes","Jeffrey Gerson",
+  "Jimmy Haber","Joe Steffee","Jonathan Maier","Julie Lewis","Justin Krogue",
+  "Kabir Mahal","Karunya Tota","Kiran Raj Gobal","Kiran Raj","Lillian Cartwright",
+  "Louis Hellman","Madeline Grade","Mehr Kashyap","Mia Lin","Mike Ng",
+  "Molong Li","Mona Ascha","Morgan Davis","Nikhil Buduma","Omri Fried",
+  "Patrick van Nieuwenhuizen","Paul Gamble","Rachel Rivera","Russell Cardullo",
+  "Ryan Douglas","Ryan Schwers","Ryan Voice","Sachin Muralidhara","Sahil Thapar",
+  "Samantha Puth","Sam Puth","Sameer Desai","Sergiy Gamanyuk","Siri Anil",
+  "Sparsh Agarwal","Stephane Colas","Stephany Campos","Tanha Kabir","Tejaswi Tenneti",
+  "Vinesh Gudla","Vinesh Kannan","Yuan Wei","Zona Liu",
+  "Katherine Babin","Mohit Kalra","Yujian Long","Mona Gorjestani",
+  "Omri Nachmani","Kyle Foley","Nikolai Oudalov","Kelly McDonald","Arvil Nagpal",
+  "Arnelle Ansong","Lauren Erwin","Kaitlin Brooks","Benjamin Rosner",
+  "Ebube Chuba","Kathryn Cavanah","Samson Tong","Chelse-Amoy Steele"
+]);
+
 const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const DOW_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 let parsed = [];
@@ -149,7 +173,7 @@ function loadCSV(e) {
             person: ((r["First Name"]||"") + " " + (r["Last Name"]||"")).trim()
           };
         })
-        .filter(r => r.date !== null);
+        .filter(r => r.date !== null && ALLOWLIST.has(r.person));
 
       const dates = parsed.map(r => r.dateStr).sort();
       document.getElementById("startDate").value = dates[0];
