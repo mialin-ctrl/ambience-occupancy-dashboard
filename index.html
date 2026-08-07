@@ -1,321 +1,337 @@
-import { useState, useEffect, useMemo } from "react";
-import Papa from "papaparse";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Office Occupancy Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.1.9/Recharts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f9f9f7; color: #1a1a18; padding: 2rem; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { font-size: 14px; color: #6b6b68; margin-bottom: 1.25rem; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 1.25rem; }
+  .controls label { font-size: 13px; color: #6b6b68; }
+  input[type=date], button, .file-btn { padding: 6px 10px; border-radius: 8px; border: 0.5px solid #ddd; background: #fff; color: #1a1a18; font-size: 13px; cursor: pointer; font-family: inherit; }
+  button:hover, .file-btn:hover { background: #f0f0ee; }
+  .file-upload { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: #fff; border: 0.5px solid #ddd; border-radius: 10px; margin-bottom: 1.25rem; }
+  .file-upload span { font-size: 13px; color: #6b6b68; }
+  .file-btn { background: #6366f1; color: #fff; border: none; font-weight: 500; }
+  .file-btn:hover { background: #4f46e5; }
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 1.5rem; }
+  .card { background: #fff; border: 0.5px solid #e5e5e2; border-radius: 12px; padding: 14px 16px; }
+  .card-val { font-size: 22px; font-weight: 600; margin-bottom: 2px; }
+  .card-lbl { font-size: 12px; color: #6b6b68; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 1rem; }
+  .tab { padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; background: #f0f0ee; color: #6b6b68; font-family: inherit; }
+  .tab.active { background: #1a1a18; color: #fff; }
+  .chart-box { background: #fff; border: 0.5px solid #e5e5e2; border-radius: 12px; padding: 1.25rem; }
+  .chart-title { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .chart-sub { font-size: 13px; color: #6b6b68; margin-bottom: 1.25rem; }
+  .rank-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 1rem; }
+  .rank-item { background: #f9f9f7; border-radius: 8px; padding: 8px 6px; text-align: center; }
+  .rank-num { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+  .rank-day { font-size: 13px; font-weight: 600; }
+  .rank-avg { font-size: 12px; color: #6b6b68; }
+  .legend { display: flex; gap: 16px; margin-top: 0.75rem; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b6b68; }
+  .legend-line { width: 16px; height: 3px; border-radius: 2px; }
+  .freq-avg { background: #f9f9f7; border-radius: 10px; padding: 1.25rem; margin-bottom: 1.25rem; text-align: center; }
+  .freq-avg-num { font-size: 36px; font-weight: 600; color: #1a1a18; margin-bottom: 4px; }
+  .freq-avg-lbl { font-size: 13px; color: #6b6b68; }
+  .freq-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .freq-table th { text-align: left; padding: 8px 12px; font-size: 12px; font-weight: 500; color: #6b6b68; border-bottom: 0.5px solid #e5e5e2; }
+  .freq-table th.right { text-align: right; }
+  .freq-table td { padding: 10px 12px; color: #1a1a18; }
+  .freq-table td.right { text-align: right; color: #6b6b68; }
+  .freq-bar-wrap { background: #e5e5e2; border-radius: 4px; height: 8px; overflow: hidden; }
+  .freq-bar-fill { background: #6366f1; height: 100%; border-radius: 4px; }
+  canvas { width: 100% !important; }
+  #barChart, #lineChart { width: 100%; height: 260px; }
+  .empty { padding: 3rem; text-align: center; color: #6b6b68; font-size: 14px; }
+  @media (max-width: 600px) { .cards { grid-template-columns: repeat(2, 1fr); } .rank-grid { grid-template-columns: repeat(4, 1fr); } }
+</style>
+</head>
+<body>
 
+<h1>Office Occupancy Dashboard</h1>
+<p class="sub" id="sub">Upload a Brivo CSV to get started</p>
+
+<div class="file-upload">
+  <button class="file-btn" onclick="document.getElementById('csvInput').click()">Upload CSV</button>
+  <span id="fileName">No file selected</span>
+  <input type="file" id="csvInput" accept=".csv" style="display:none" onchange="loadCSV(event)">
+</div>
+
+<div class="controls">
+  <label>From <input type="date" id="startDate" onchange="render()"></label>
+  <label>To <input type="date" id="endDate" onchange="render()"></label>
+  <button onclick="setPreset(30)">Last 30d</button>
+  <button onclick="setPreset(90)">Last 90d</button>
+  <button onclick="setAllTime()">All time</button>
+  <label><input type="checkbox" id="weekends" onchange="render()"> Include weekends</label>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="card-val" id="cAvg">—</div><div class="card-lbl">Avg daily visitors</div></div>
+  <div class="card"><div class="card-val" id="cPeak">—</div><div class="card-lbl">Peak single day</div></div>
+  <div class="card"><div class="card-val" id="cUnique">—</div><div class="card-lbl">Unique badge holders</div></div>
+  <div class="card"><div class="card-val" id="cBusiest">—</div><div class="card-lbl">Busiest day (avg)</div></div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" id="tabDow" onclick="switchTab('dow')">Day of Week</button>
+  <button class="tab" id="tabTrend" onclick="switchTab('trend')">Daily Trend</button>
+  <button class="tab" id="tabFreq" onclick="switchTab('freq')">Weekly Frequency</button>
+</div>
+
+<div class="chart-box" id="panelDow">
+  <div class="chart-title">Average Unique Visitors by Day of Week</div>
+  <div class="chart-sub">Avg unique badge holders per occurrence of each weekday</div>
+  <div style="height:260px;position:relative"><canvas id="barChart"></canvas></div>
+  <div class="rank-grid" id="rankGrid"></div>
+</div>
+
+<div class="chart-box" id="panelFreq" style="display:none">
+  <div class="chart-title">Weekly Attendance Frequency</div>
+  <div class="chart-sub" id="freqSub">Averaged across all weeks in range, including weeks with no visits</div>
+  <div class="freq-avg">
+    <div class="freq-avg-num" id="freqAvg">—</div>
+    <div class="freq-avg-lbl">average days in office per week, per employee</div>
+  </div>
+  <table class="freq-table">
+    <thead>
+      <tr>
+        <th>Avg days/week</th>
+        <th class="right">Employees</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="freqRows"></tbody>
+  </table>
+</div>
+
+<div class="chart-box" id="panelTrend" style="display:none">
+  <div class="chart-title">Daily Unique Visitors Over Time</div>
+  <div class="chart-sub">Unique badge holders per day with 14-day rolling average</div>
+  <div style="height:260px;position:relative"><canvas id="lineChart"></canvas></div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-line" style="background:#c4b5fd"></div>Daily visitors</div>
+    <div class="legend-item"><div class="legend-line" style="background:#6366f1"></div>14-day rolling avg</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script>
 const DOW = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const DOW_FULL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+let parsed = [];
+let barChart, lineChart;
+let activeTab = "dow";
 
-export default function App() {
-  const [raw, setRaw] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [tab, setTab] = useState("dow");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [includeWeekends, setIncludeWeekends] = useState(false);
+function loadCSV(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  document.getElementById("fileName").textContent = file.name;
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(results) {
+      parsed = results.data
+        .filter(r => r.Event && (r.Event.toLowerCase().includes("user entry") || r.Event.toLowerCase().includes("access granted")) && r.Occurred)
+        .map(r => {
+          const d = new Date(r.Occurred.replace(/ PDT| PST/g, ""));
+          return {
+            date: isNaN(d) ? null : d,
+            dow: isNaN(d) ? null : d.getDay(),
+            dateStr: isNaN(d) ? null : d.toISOString().slice(0,10),
+            person: ((r["First Name"]||"") + " " + (r["Last Name"]||"")).trim()
+          };
+        })
+        .filter(r => r.date !== null);
 
-  useEffect(() => {
-    window.fs.readFile("report.csv", { encoding: "utf8" })
-      .then(txt => {
-        const { data } = Papa.parse(txt, { header: true, skipEmptyLines: true });
-        setRaw(data);
-        setLoading(false);
-      })
-      .catch(e => { setError(e.message); setLoading(false); });
-  }, []);
-
-  const parsed = useMemo(() => {
-    return raw
-      .filter(r => r.Event && (r.Event.toLowerCase().includes("user entry") || r.Event.toLowerCase().includes("access granted")) && r.Occurred)
-      .map(r => {
-        const d = new Date(r.Occurred.replace(/ PDT| PST/g, ""));
-        return {
-          ...r,
-          date: isNaN(d) ? null : d,
-          dow: isNaN(d) ? null : d.getDay(),
-          dateStr: isNaN(d) ? null : d.toISOString().slice(0,10),
-          person: `${r["First Name"]||""} ${r["Last Name"]||""}`.trim()
-        };
-      })
-      .filter(r => r.date !== null);
-  }, [raw]);
-
-  useEffect(() => {
-    if (!parsed.length) return;
-    const dates = parsed.map(r => r.dateStr).sort();
-    if (!startDate) setStartDate(dates[0]);
-    if (!endDate) setEndDate(dates[dates.length - 1]);
-  }, [parsed]);
-
-  const filtered = useMemo(() => {
-    if (!startDate || !endDate) return parsed;
-    return parsed.filter(r => {
-      if (r.dateStr < startDate || r.dateStr > endDate) return false;
-      if (!includeWeekends && (r.dow === 0 || r.dow === 6)) return false;
-      return true;
-    });
-  }, [parsed, startDate, endDate, includeWeekends]);
-
-  const dowData = useMemo(() => {
-    const buckets = Array(7).fill(null).map((_,i) => ({ day: DOW[i], fullDay: DOW_FULL[i], uniquePerDay: [] }));
-    const byDowDate = {};
-    filtered.forEach(r => {
-      const key = `${r.dow}_${r.dateStr}`;
-      if (!byDowDate[key]) byDowDate[key] = new Set();
-      byDowDate[key].add(r.person);
-    });
-    Object.entries(byDowDate).forEach(([key, people]) => {
-      const dow = parseInt(key.split("_")[0]);
-      buckets[dow].uniquePerDay.push(people.size);
-    });
-    return buckets.map(b => ({
-      day: b.day,
-      fullDay: b.fullDay,
-      avg: b.uniquePerDay.length ? Math.round(b.uniquePerDay.reduce((a,c)=>a+c,0)/b.uniquePerDay.length) : 0,
-      max: b.uniquePerDay.length ? Math.max(...b.uniquePerDay) : 0,
-      occurrences: b.uniquePerDay.length
-    }));
-  }, [filtered]);
-
-  const dailyData = useMemo(() => {
-    const byDate = {};
-    filtered.forEach(r => {
-      if (!byDate[r.dateStr]) byDate[r.dateStr] = new Set();
-      byDate[r.dateStr].add(r.person);
-    });
-    return Object.entries(byDate)
-      .sort(([a],[b]) => a.localeCompare(b))
-      .map(([date, people]) => ({
-        date,
-        count: people.size,
-        label: new Date(date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"})
-      }));
-  }, [filtered]);
-
-  const trendWithAvg = useMemo(() => {
-    return dailyData.map((d, i) => {
-      const w = dailyData.slice(Math.max(0, i-13), i+1);
-      return { ...d, avg: Math.round(w.reduce((a,c)=>a+c.count,0)/w.length) };
-    });
-  }, [dailyData]);
-
-  const weeklyFreqData = useMemo(() => {
-    if (!filtered.length || !startDate || !endDate) return { avg: 0, totalWeeks: 0, distribution: [] };
-
-    const start = new Date(startDate + "T12:00:00");
-    const end = new Date(endDate + "T12:00:00");
-    const allWeeks = new Set();
-    const d = new Date(start);
-    while (d <= end) {
-      const dow = d.getDay();
-      if (includeWeekends || (dow !== 0 && dow !== 6)) {
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
-        allWeeks.add(monday.toISOString().slice(0, 10));
-      }
-      d.setDate(d.getDate() + 1);
+      const dates = parsed.map(r => r.dateStr).sort();
+      document.getElementById("startDate").value = dates[0];
+      document.getElementById("endDate").value = dates[dates.length-1];
+      render();
     }
-    const totalWeeks = allWeeks.size;
-    if (!totalWeeks) return { avg: 0, totalWeeks: 0, distribution: [] };
-
-    const personDays = {};
-    filtered.forEach(r => {
-      if (!personDays[r.person]) personDays[r.person] = new Set();
-      personDays[r.person].add(r.dateStr);
-    });
-
-    const avgPerPerson = Object.values(personDays).map(days => days.size / totalWeeks);
-    const overallAvg = avgPerPerson.reduce((a, c) => a + c, 0) / avgPerPerson.length;
-
-    const buckets = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    avgPerPerson.forEach(avg => {
-      const bucket = Math.min(5, Math.max(1, Math.round(avg)));
-      buckets[bucket]++;
-    });
-
-    return {
-      avg: overallAvg,
-      totalWeeks,
-      distribution: Object.entries(buckets).map(([days, count]) => ({ days: parseInt(days), count }))
-    };
-  }, [filtered, startDate, endDate, includeWeekends]);
-
-  const stats = useMemo(() => {
-    if (!dailyData.length) return {};
-    const counts = dailyData.map(d=>d.count);
-    const avg = Math.round(counts.reduce((a,c)=>a+c,0)/counts.length);
-    const max = Math.max(...counts);
-    const uniquePeople = new Set(filtered.map(r=>r.person)).size;
-    const busiest = [...dowData].sort((a,b)=>b.avg-a.avg)[0];
-    return { avg, max, uniquePeople, busiest: busiest?.fullDay };
-  }, [dailyData, filtered, dowData]);
-
-  const maxAvg = Math.max(...dowData.map(d=>d.avg));
-  const busyDow = useMemo(() => [...dowData].sort((a,b)=>b.avg-a.avg), [dowData]);
-
-  const inputStyle = {
-    padding:"6px 10px", borderRadius:8, fontSize:13,
-    border:"0.5px solid var(--color-border-tertiary)",
-    background:"var(--color-background-primary)",
-    color:"var(--color-text-primary)", cursor:"pointer"
-  };
-
-  const presets = [
-    { label:"Last 30d", fn: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate()-30); setStartDate(s.toISOString().slice(0,10)); setEndDate(e.toISOString().slice(0,10)); }},
-    { label:"Last 90d", fn: () => { const e = new Date(); const s = new Date(); s.setDate(s.getDate()-90); setStartDate(s.toISOString().slice(0,10)); setEndDate(e.toISOString().slice(0,10)); }},
-    { label:"All time", fn: () => { const dates = parsed.map(r=>r.dateStr).sort(); setStartDate(dates[0]); setEndDate(dates[dates.length-1]); }},
-  ];
-
-  if (loading) return <div style={{padding:"2rem",color:"var(--color-text-secondary)"}}>Loading access data...</div>;
-  if (error) return <div style={{padding:"2rem",color:"var(--color-text-secondary)"}}>Error: {error}</div>;
-
-  return (
-    <div style={{padding:"1.5rem",maxWidth:860,margin:"0 auto",fontFamily:"inherit"}}>
-      <div style={{marginBottom:"1.25rem"}}>
-        <h2 style={{fontSize:20,fontWeight:600,color:"var(--color-text-primary)",margin:"0 0 4px"}}>Office Occupancy Dashboard</h2>
-        <p style={{fontSize:14,color:"var(--color-text-secondary)",margin:0}}>{filtered.length.toLocaleString()} entries · {dailyData.length} days in range</p>
-      </div>
-
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:"1.25rem",flexWrap:"wrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <label style={{fontSize:13,color:"var(--color-text-secondary)"}}>From</label>
-          <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputStyle}/>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <label style={{fontSize:13,color:"var(--color-text-secondary)"}}>To</label>
-          <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={inputStyle}/>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          {presets.map(p=>(
-            <button key={p.label} onClick={p.fn} style={{...inputStyle,border:"0.5px solid var(--color-border-tertiary)",cursor:"pointer",fontWeight:500}}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"var(--color-text-secondary)",cursor:"pointer"}}>
-          <input type="checkbox" checked={includeWeekends} onChange={e=>setIncludeWeekends(e.target.checked)}/>
-          Include weekends
-        </label>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:"1.5rem"}}>
-        {[
-          {label:"Avg daily visitors",value:stats.avg||0},
-          {label:"Peak single day",value:stats.max||0},
-          {label:"Unique badge holders",value:stats.uniquePeople||0},
-          {label:"Busiest day (avg)",value:stats.busiest||"—"}
-        ].map(s=>(
-          <div key={s.label} style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"14px 16px"}}>
-            <div style={{fontSize:22,fontWeight:600,color:"var(--color-text-primary)",marginBottom:2}}>{s.value}</div>
-            <div style={{fontSize:12,color:"var(--color-text-secondary)"}}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{display:"flex",gap:8,marginBottom:"1rem"}}>
-        {[["dow","Day of Week"],["trend","Daily Trend"],["freq","Weekly Frequency"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"6px 14px",borderRadius:8,border:"none",cursor:"pointer",fontSize:13,fontWeight:500,
-            background:tab===k?"var(--color-text-primary)":"var(--color-background-secondary)",
-            color:tab===k?"var(--color-background-primary)":"var(--color-text-secondary)"
-          }}>{l}</button>
-        ))}
-      </div>
-
-      {tab==="dow" && (
-        <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.25rem"}}>
-          <h3 style={{fontSize:15,fontWeight:600,color:"var(--color-text-primary)",margin:"0 0 4px"}}>Average Unique Visitors by Day of Week</h3>
-          <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:"0 0 1.25rem"}}>Avg unique badge holders per occurrence of each weekday</p>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={dowData} barSize={36}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-tertiary)" vertical={false}/>
-              <XAxis dataKey="day" tick={{fontSize:13,fill:"var(--color-text-secondary)"}} axisLine={false} tickLine={false}/>
-              <YAxis tick={{fontSize:12,fill:"var(--color-text-secondary)"}} axisLine={false} tickLine={false}/>
-              <Tooltip
-                contentStyle={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:8,fontSize:13}}
-                formatter={(v,n,p)=>[`${v} avg (peak: ${p.payload.max})`,p.payload.fullDay]}
-                labelFormatter={()=>""}
-              />
-              <Bar dataKey="avg" radius={[6,6,0,0]}>
-                {dowData.map((d,i)=><Cell key={i} fill={d.avg===maxAvg?"#6366f1":"#c4b5fd"}/>)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div style={{marginTop:"1rem",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
-            {busyDow.map((d,i)=>(
-              <div key={d.day} style={{background:"var(--color-background-secondary)",borderRadius:8,padding:"8px 6px",textAlign:"center"}}>
-                <div style={{fontSize:11,color:"var(--color-text-tertiary)",marginBottom:2}}>#{i+1}</div>
-                <div style={{fontSize:13,fontWeight:600,color:"var(--color-text-primary)"}}>{d.day}</div>
-                <div style={{fontSize:12,color:"var(--color-text-secondary)"}}>{d.avg} avg</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab==="trend" && (
-        <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.25rem"}}>
-          <h3 style={{fontSize:15,fontWeight:600,color:"var(--color-text-primary)",margin:"0 0 4px"}}>Daily Unique Visitors Over Time</h3>
-          <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:"0 0 1.25rem"}}>Unique badge holders per day with 14-day rolling average</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={trendWithAvg}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-tertiary)" vertical={false}/>
-              <XAxis dataKey="label" tick={{fontSize:11,fill:"var(--color-text-secondary)"}} axisLine={false} tickLine={false} interval={Math.floor(trendWithAvg.length/8)}/>
-              <YAxis tick={{fontSize:12,fill:"var(--color-text-secondary)"}} axisLine={false} tickLine={false}/>
-              <Tooltip
-                contentStyle={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:8,fontSize:13}}
-                formatter={(v,n)=>[v, n==="count"?"Unique visitors":"14-day avg"]}
-              />
-              <Line type="monotone" dataKey="count" stroke="#c4b5fd" strokeWidth={1.5} dot={false} name="count"/>
-              <Line type="monotone" dataKey="avg" stroke="#6366f1" strokeWidth={2.5} dot={false} name="avg"/>
-            </LineChart>
-          </ResponsiveContainer>
-          <div style={{display:"flex",gap:16,marginTop:"0.75rem"}}>
-            {[{color:"#c4b5fd",label:"Daily visitors"},{color:"#6366f1",label:"14-day rolling avg"}].map(l=>(
-              <div key={l.label} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--color-text-secondary)"}}>
-                <div style={{width:16,height:3,background:l.color,borderRadius:2}}/>
-                {l.label}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {tab==="freq" && (
-        <div style={{background:"var(--color-background-primary)",border:"0.5px solid var(--color-border-tertiary)",borderRadius:12,padding:"1.25rem"}}>
-          <h3 style={{fontSize:15,fontWeight:600,color:"var(--color-text-primary)",margin:"0 0 4px"}}>Weekly Attendance Frequency</h3>
-          <p style={{fontSize:13,color:"var(--color-text-secondary)",margin:"0 0 1.5rem"}}>Averaged across all {weeklyFreqData.totalWeeks} weeks in range, including weeks with no visits</p>
-          <div style={{background:"var(--color-background-secondary)",borderRadius:10,padding:"1.25rem",marginBottom:"1.25rem",textAlign:"center"}}>
-            <div style={{fontSize:36,fontWeight:700,color:"var(--color-text-primary)",marginBottom:4}}>{weeklyFreqData.avg.toFixed(1)}</div>
-            <div style={{fontSize:13,color:"var(--color-text-secondary)"}}>average days in office per week, per employee</div>
-          </div>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-            <thead>
-              <tr>
-                <th style={{textAlign:"left",padding:"8px 12px",fontSize:12,fontWeight:500,color:"var(--color-text-secondary)",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>Avg days/week</th>
-                <th style={{textAlign:"right",padding:"8px 12px",fontSize:12,fontWeight:500,color:"var(--color-text-secondary)",borderBottom:"0.5px solid var(--color-border-tertiary)"}}>Employees</th>
-                <th style={{padding:"8px 12px",borderBottom:"0.5px solid var(--color-border-tertiary)"}}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {weeklyFreqData.distribution?.map(({days, count}) => {
-                const max = Math.max(...(weeklyFreqData.distribution?.map(d=>d.count)||[1]));
-                return (
-                  <tr key={days}>
-                    <td style={{padding:"10px 12px",color:"var(--color-text-primary)",fontWeight:500}}>{days} day{days>1?"s":""}/week</td>
-                    <td style={{padding:"10px 12px",textAlign:"right",color:"var(--color-text-secondary)"}}>{count} {count===1?"person":"people"}</td>
-                    <td style={{padding:"10px 12px",width:"40%"}}>
-                      <div style={{background:"var(--color-border-tertiary)",borderRadius:4,height:8,overflow:"hidden"}}>
-                        <div style={{background:"#6366f1",height:"100%",width:`${max?count/max*100:0}%`,borderRadius:4}}/>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
+  });
 }
+
+function setPreset(days) {
+  const e = new Date(); const s = new Date();
+  s.setDate(s.getDate() - days);
+  document.getElementById("startDate").value = s.toISOString().slice(0,10);
+  document.getElementById("endDate").value = e.toISOString().slice(0,10);
+  render();
+}
+
+function setAllTime() {
+  const dates = parsed.map(r => r.dateStr).sort();
+  if (!dates.length) return;
+  document.getElementById("startDate").value = dates[0];
+  document.getElementById("endDate").value = dates[dates.length-1];
+  render();
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  document.getElementById("panelDow").style.display = tab === "dow" ? "" : "none";
+  document.getElementById("panelTrend").style.display = tab === "trend" ? "" : "none";
+  document.getElementById("panelFreq").style.display = tab === "freq" ? "" : "none";
+  document.getElementById("tabDow").className = "tab" + (tab === "dow" ? " active" : "");
+  document.getElementById("tabTrend").className = "tab" + (tab === "trend" ? " active" : "");
+  document.getElementById("tabFreq").className = "tab" + (tab === "freq" ? " active" : "");
+}
+
+function render() {
+  if (!parsed.length) return;
+  const start = document.getElementById("startDate").value;
+  const end = document.getElementById("endDate").value;
+  const incWeekends = document.getElementById("weekends").checked;
+
+  const filtered = parsed.filter(r => {
+    if (r.dateStr < start || r.dateStr > end) return false;
+    if (!incWeekends && (r.dow === 0 || r.dow === 6)) return false;
+    return true;
+  });
+
+  // Daily unique visitors
+  const byDate = {};
+  filtered.forEach(r => {
+    if (!byDate[r.dateStr]) byDate[r.dateStr] = new Set();
+    byDate[r.dateStr].add(r.person);
+  });
+  const dailyData = Object.entries(byDate).sort(([a],[b]) => a.localeCompare(b))
+    .map(([date, people]) => ({ date, count: people.size, label: new Date(date+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric"}) }));
+
+  // Stats
+  const counts = dailyData.map(d => d.count);
+  const avg = counts.length ? Math.round(counts.reduce((a,c)=>a+c,0)/counts.length) : 0;
+  const peak = counts.length ? Math.max(...counts) : 0;
+  const unique = new Set(filtered.map(r => r.person)).size;
+
+  // DOW
+  const dowBuckets = Array(7).fill(null).map((_,i) => ({ day: DOW[i], full: DOW_FULL[i], days: {} }));
+  filtered.forEach(r => {
+    if (!dowBuckets[r.dow].days[r.dateStr]) dowBuckets[r.dow].days[r.dateStr] = new Set();
+    dowBuckets[r.dow].days[r.dateStr].add(r.person);
+  });
+  const dowData = dowBuckets.map(b => {
+    const vals = Object.values(b.days).map(s => s.size);
+    return { day: b.day, full: b.full, avg: vals.length ? Math.round(vals.reduce((a,c)=>a+c,0)/vals.length) : 0, max: vals.length ? Math.max(...vals) : 0 };
+  });
+  const maxAvg = Math.max(...dowData.map(d => d.avg));
+  const busiest = [...dowData].sort((a,b) => b.avg-a.avg)[0];
+
+  // Update cards
+  document.getElementById("cAvg").textContent = avg;
+  document.getElementById("cPeak").textContent = peak;
+  document.getElementById("cUnique").textContent = unique;
+  document.getElementById("cBusiest").textContent = busiest?.full || "—";
+  document.getElementById("sub").textContent = `${filtered.length.toLocaleString()} entries · ${dailyData.length} days in range`;
+
+  // Rank grid
+  const ranked = [...dowData].sort((a,b) => b.avg-a.avg);
+  document.getElementById("rankGrid").innerHTML = ranked.map((d,i) => `
+    <div class="rank-item">
+      <div class="rank-num">#${i+1}</div>
+      <div class="rank-day">${d.day}</div>
+      <div class="rank-avg">${d.avg} avg</div>
+    </div>`).join("");
+
+  // Bar chart
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById("barChart"), {
+    type: "bar",
+    data: {
+      labels: dowData.map(d => d.day),
+      datasets: [{
+        data: dowData.map(d => d.avg),
+        backgroundColor: dowData.map(d => d.avg === maxAvg ? "#6366f1" : "#c4b5fd"),
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        title: (i) => dowData[i[0].dataIndex].full,
+        label: (i) => `${i.raw} avg (peak: ${dowData[i.dataIndex].max})`
+      }}},
+      scales: {
+        x: { grid: { display: false }, border: { display: false } },
+        y: { grid: { color: "#f0f0ee" }, border: { display: false } }
+      }
+    }
+  });
+
+  // Weekly frequency
+  const startD = new Date(start + "T12:00:00");
+  const endD = new Date(end + "T12:00:00");
+  const allWeeks = new Set();
+  const wd = new Date(startD);
+  while (wd <= endD) {
+    const dow = wd.getDay();
+    if (incWeekends || (dow !== 0 && dow !== 6)) {
+      const mon = new Date(wd);
+      mon.setDate(wd.getDate() - (dow === 0 ? 6 : dow - 1));
+      allWeeks.add(mon.toISOString().slice(0, 10));
+    }
+    wd.setDate(wd.getDate() + 1);
+  }
+  const totalWeeks = allWeeks.size || 1;
+
+  const personDays = {};
+  filtered.forEach(r => {
+    if (!personDays[r.person]) personDays[r.person] = new Set();
+    personDays[r.person].add(r.dateStr);
+  });
+  const avgPerPerson = Object.values(personDays).map(days => days.size / totalWeeks);
+  const overallAvg = avgPerPerson.length ? avgPerPerson.reduce((a,c)=>a+c,0)/avgPerPerson.length : 0;
+  const buckets = {1:0,2:0,3:0,4:0,5:0};
+  avgPerPerson.forEach(a => { const b = Math.min(5,Math.max(1,Math.round(a))); buckets[b]++; });
+  const maxBucket = Math.max(...Object.values(buckets), 1);
+
+  document.getElementById("freqAvg").textContent = overallAvg.toFixed(1);
+  document.getElementById("freqSub").textContent = `Averaged across all ${totalWeeks} weeks in range, including weeks with no visits`;
+  document.getElementById("freqRows").innerHTML = Object.entries(buckets).map(([days,count]) => `
+    <tr>
+      <td style="font-weight:500">${days} day${days>1?"s":""}/week</td>
+      <td class="right">${count} ${count===1?"person":"people"}</td>
+      <td style="width:40%;padding:10px 12px">
+        <div class="freq-bar-wrap"><div class="freq-bar-fill" style="width:${maxBucket?count/maxBucket*100:0}%"></div></div>
+      </td>
+    </tr>`).join("");
+
+  // Rolling avg
+  const withAvg = dailyData.map((d,i) => {
+    const w = dailyData.slice(Math.max(0,i-13), i+1);
+    return { ...d, avg: Math.round(w.reduce((a,c)=>a+c.count,0)/w.length) };
+  });
+
+  // Line chart
+  if (lineChart) lineChart.destroy();
+  const interval = Math.max(1, Math.floor(withAvg.length / 8));
+  lineChart = new Chart(document.getElementById("lineChart"), {
+    type: "line",
+    data: {
+      labels: withAvg.map(d => d.label),
+      datasets: [
+        { label: "Daily visitors", data: withAvg.map(d => d.count), borderColor: "#c4b5fd", borderWidth: 1.5, pointRadius: 0, tension: 0.3 },
+        { label: "14-day avg", data: withAvg.map(d => d.avg), borderColor: "#6366f1", borderWidth: 2.5, pointRadius: 0, tension: 0.3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, border: { display: false }, ticks: { maxTicksLimit: 8 } },
+        y: { grid: { color: "#f0f0ee" }, border: { display: false } }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
